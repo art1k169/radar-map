@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Radar Monitor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { margin: 0; background: #0d1117; color: white; font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        #map { flex: 1; background: #0d1117; }
+        .sidebar { width: 350px; background: #161b22; display: flex; flex-direction: column; border-left: 1px solid #30363d; box-shadow: -5px 0 15px rgba(0,0,0,0.5); }
+        .header { padding: 20px; background: #0d1117; color: #58a6ff; font-weight: bold; text-align: center; border-bottom: 1px solid #30363d; letter-spacing: 1px; }
+        .feed { flex: 1; overflow-y: auto; padding: 10px; scrollbar-width: thin; scrollbar-color: #30363d #161b22; }
+        .msg { background: #0d1117; border: 1px solid #30363d; padding: 12px; margin-bottom: 10px; border-radius: 8px; font-size: 13px; line-height: 1.5; animation: fadeIn 0.3s; }
+        
+        /* Стили для количества объектов */
+        .marker-wrap { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        .count-badge { 
+            position: absolute; top: -12px; left: 40%; transform: translateX(-50%);
+            background: #f85149; color: white; padding: 1px 5px; border-radius: 8px; 
+            font-weight: bold; font-size: 11px; z-index: 9999; border: 1.5px solid white;
+            box-shadow: 0 0 5px rgba(248, 81, 73, 0.6); pointer-events: none;
+        }
+
+        /* Стиль для эмодзи взрыва */
+        .explosion-emoji {
+            font-size: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            filter: drop-shadow(0 0 10px orange);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="sidebar">
+        <div class="header">МОНІТОРИНГ ПОВІТРЯНИХ ЦІЛЕЙ</div>
+        <div id="msg-list" class="feed"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let LOCS = {}; 
+        let markers = {}; 
+        let explosions = {}; // Для хранения маркеров взрывов
+
+        const map = L.map('map', { zoomControl: false }).setView([49.0, 31.0], 6);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        
+        const socket = io('http://127.0.0.1:5000');
+
+        function addMessage(m) {
+            const list = document.getElementById('msg-list');
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.innerHTML = `<div style="display:flex; justify-content:space-between; margin-bottom:5px">
+                                <b style="color:#58a6ff">@${m.chat}</b>
+                                <small style="color:#8b949e">${m.time}</small>
+                             </div>
+                             <div>${m.text.replace(/\n/g, '<br>')}</div>`;
+            list.prepend(div);
+            
+            // Логика отображения взрыва (если в тексте есть 'вибух' или 'взрыв')
+            const text = m.text.toLowerCase();
+            if (text.includes('вибух') || text.includes('взрыв')) {
+                handleExplosion(text);
+            }
+
+            if (list.children.length > 50) list.lastElementChild.remove();
+        }
+
+        function handleExplosion(text) {
+            // Ищем город в тексте сообщения
+            for (let name in LOCS) {
+                if (text.includes(name)) {
+                    const coords = LOCS[name];
+                    const expKey = name + "_" + Date.now();
+
+                    const expIcon = L.divIcon({
+                        html: '<div class="explosion-emoji">💥</div>',
+                        className: 'none',
+                        iconSize: [40, 40],
+                        iconAnchor: [20, 20]
+                    });
+
+                    const expMarker = L.marker(coords, { icon: expIcon, zIndexOffset: 2000 }).addTo(map);
+                    
+                    // Удаляем через 7 минут (420000 мс)
+                    setTimeout(() => {
+                        map.removeLayer(expMarker);
+                    }, 420000); 
+                    break; 
+                }
+            }
+        }
+
+        function renderTarget(data) {
+            if (markers[data.id]) map.removeLayer(markers[data.id].obj);
+            
+            const pStart = data.current_pos_now || data.current_pos;
+            const pEnd = LOCS[data.points[data.points.length - 1]];
+            if(!pStart || !pEnd) return;
+
+            const angle = Math.atan2(pEnd[1]-pStart[1], pEnd[0]-pStart[0]) * (180/Math.PI);
+            
+            let img, w, h;
+            if (data.type==='missile') { img='ракета.png'; w=80; h=34; }
+            else if (data.type==='kab') { img='каб.png'; w=80; h=31; }
+            else { img='шахед.png'; w=45; h=45; }
+
+            const countTag = data.count > 1 ? `<div class="count-badge">${data.count}</div>` : '';
+
+            const icon = L.divIcon({
+                html: `<div class="marker-wrap">
+                            ${countTag}
+                            <img src="${img}" style="transform:rotate(${angle}deg); width:${w}px; height:${h}px;">
+                       </div>`,
+                className: 'custom-icon', iconSize: [w, h], iconAnchor: [w/2, h/2]
+            });
+
+            const marker = L.marker(pStart, {icon: icon, zIndexOffset: 1000}).addTo(map);
+            markers[data.id] = {obj: marker};
+
+            let dur = (data.type==='missile'?10: (data.type==='kab'?25:45))*1000;
+            let elapsed = (Date.now()/1000 - data.start_time)*1000;
+            let remain = Math.max(dur - elapsed, 0);
+
+            if (remain > 0) {
+                let start = performance.now();
+                function step(now) {
+                    let p = Math.min((now - start) / remain, 1);
+                    marker.setLatLng([pStart[0]+(pEnd[0]-pStart[0])*p, pStart[1]+(pEnd[1]-pStart[1])*p]);
+                    if (p < 1) requestAnimationFrame(step);
+                }
+                requestAnimationFrame(step);
+            } else { marker.setLatLng(pEnd); }
+        }
+
+        fetch('http://127.0.0.1:5000/get_init_data').then(r => r.json()).then(data => {
+            LOCS = data.locations;
+            data.messages.forEach(addMessage);
+            Object.values(data.targets).forEach(renderTarget);
+        });
+
+        socket.on('new_log', addMessage);
+        socket.on('update_target', renderTarget);
+        socket.on('remove_target', id => { if(markers[id]){ map.removeLayer(markers[id].obj); delete markers[id]; }});
+    </script>
+</body>
+</html>
