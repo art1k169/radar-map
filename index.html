@@ -55,7 +55,7 @@
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         
         // --- ПОДКЛЮЧЕНИЕ К ТВОЕМУ СЕРВЕРУ ---
-        const socket = io('https://my-radar-server.onrender.com');
+        const socket = io('[https://my-radar-server.onrender.com](https://my-radar-server.onrender.com)');
 
         function addMessage(m) {
             const list = document.getElementById('msg-list');
