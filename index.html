@@ -13,7 +13,6 @@
         .feed { flex: 1; overflow-y: auto; padding: 10px; scrollbar-width: thin; scrollbar-color: #30363d #161b22; }
         .msg { background: #0d1117; border: 1px solid #30363d; padding: 12px; margin-bottom: 10px; border-radius: 8px; font-size: 13px; line-height: 1.5; animation: fadeIn 0.3s; }
         
-        /* Стили для количества объектов */
         .marker-wrap { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
         .count-badge { 
             position: absolute; top: -12px; left: 40%; transform: translateX(-50%);
@@ -22,7 +21,6 @@
             box-shadow: 0 0 5px rgba(248, 81, 73, 0.6); pointer-events: none;
         }
 
-        /* Стиль для эмодзи взрыва */
         .explosion-emoji {
             font-size: 30px;
             display: flex;
@@ -51,12 +49,13 @@
     <script>
         let LOCS = {}; 
         let markers = {}; 
-        let explosions = {}; // Для хранения маркеров взрывов
+        let explosions = {}; 
 
         const map = L.map('map', { zoomControl: false }).setView([49.0, 31.0], 6);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         
-        const socket = io('http://127.0.0.1:5000');
+        // --- ПОДКЛЮЧЕНИЕ К ТВОЕМУ СЕРВЕРУ ---
+        const socket = io('https://my-radar-server.onrender.com');
 
         function addMessage(m) {
             const list = document.getElementById('msg-list');
@@ -69,7 +68,6 @@
                              <div>${m.text.replace(/\n/g, '<br>')}</div>`;
             list.prepend(div);
             
-            // Логика отображения взрыва (если в тексте есть 'вибух' или 'взрыв')
             const text = m.text.toLowerCase();
             if (text.includes('вибух') || text.includes('взрыв')) {
                 handleExplosion(text);
@@ -79,12 +77,9 @@
         }
 
         function handleExplosion(text) {
-            // Ищем город в тексте сообщения
             for (let name in LOCS) {
                 if (text.includes(name)) {
                     const coords = LOCS[name];
-                    const expKey = name + "_" + Date.now();
-
                     const expIcon = L.divIcon({
                         html: '<div class="explosion-emoji">💥</div>',
                         className: 'none',
@@ -94,7 +89,6 @@
 
                     const expMarker = L.marker(coords, { icon: expIcon, zIndexOffset: 2000 }).addTo(map);
                     
-                    // Удаляем через 7 минут (420000 мс)
                     setTimeout(() => {
                         map.removeLayer(expMarker);
                     }, 420000); 
@@ -113,8 +107,10 @@
             const angle = Math.atan2(pEnd[1]-pStart[1], pEnd[0]-pStart[0]) * (180/Math.PI);
             
             let img, w, h;
+            // Условия для выбора иконок (добавил разведчик)
             if (data.type==='missile') { img='ракета.png'; w=80; h=34; }
             else if (data.type==='kab') { img='каб.png'; w=80; h=31; }
+            else if (data.type==='recon') { img='разведчик.png'; w=60; h=60; }
             else { img='шахед.png'; w=45; h=45; }
 
             const countTag = data.count > 1 ? `<div class="count-badge">${data.count}</div>` : '';
@@ -145,7 +141,8 @@
             } else { marker.setLatLng(pEnd); }
         }
 
-        fetch('http://127.0.0.1:5000/get_init_data').then(r => r.json()).then(data => {
+        // --- ИНИЦИАЛИЗАЦИЯ ДАННЫХ ПРИ ЗАГРУЗКЕ ---
+        fetch('https://my-radar-server.onrender.com/get_init_data').then(r => r.json()).then(data => {
             LOCS = data.locations;
             data.messages.forEach(addMessage);
             Object.values(data.targets).forEach(renderTarget);
