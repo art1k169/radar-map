@@ -55,7 +55,7 @@
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         
         // --- ПОДКЛЮЧЕНИЕ К ТВОЕМУ СЕРВЕРУ ---
-        const socket = io('[https://my-radar-server.onrender.com](https://my-radar-server.onrender.com)');
+        const socket = io('[https://radar-backend-2csp.onrender.com](https://radar-backend-2csp.onrender.com)');
 
         function addMessage(m) {
             const list = document.getElementById('msg-list');
@@ -142,7 +142,7 @@
         }
 
         // --- ИНИЦИАЛИЗАЦИЯ ДАННЫХ ПРИ ЗАГРУЗКЕ ---
-        fetch('https://my-radar-server.onrender.com/get_init_data').then(r => r.json()).then(data => {
+       fetch('[https://radar-backend-2csp.onrender.com/get_init_data](https://radar-backend-2csp.onrender.com/get_init_data)')
             LOCS = data.locations;
             data.messages.forEach(addMessage);
             Object.values(data.targets).forEach(renderTarget);
